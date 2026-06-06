@@ -3,13 +3,19 @@ GEOMETRY DASH - Python Edition
 
 HOW TO PLAY
 -----------
-- The cube runs forward on its own.
+- When the game starts you pick a difficulty:
+  Easy, Medium, Hard, Very Hard, or Boss.
+  Use UP/DOWN (or press 1-5), then ENTER / click to start.
+  Every difficulty is beatable -- the harder ones just scroll
+  faster and pack the obstacles tighter.
+- The cube then runs forward on its own.
 - Press SPACE (or the UP arrow, or left-click) to JUMP.
 - You can HOLD the jump key to keep hopping.
 - Avoid the red spikes. Land on top of the blue platforms.
 - Reach the green finish flag to win.
-- Press R any time to restart from the beginning.
-- Press ESC to quit.
+- Background music plays from the menu all the way through.
+- Press R to restart the current difficulty from the beginning.
+- Press ESC to go back to the difficulty menu (and again to quit).
 
 HOW TO RUN IT (pick one)
 ------------------------
@@ -24,13 +30,14 @@ IF IT SAYS "pygame not found":
 
 WANT TO CHANGE THE GAME?
 ------------------------
-Open main.py in any text editor (even Notepad). Near the top you'll
-find a section called SETTINGS with plain-English comments. Try:
-  - SPEED        -> lower = easier, higher = harder
-  - JUMP_VELOCITY-> more negative = jump higher
-  - GRAVITY      -> bigger = the cube falls faster
+Open geometry_dash/config.py in any text editor (even Notepad). You'll
+find plain-English comments. Try:
+  - JUMP_VELOCITY -> more negative = jump higher
+  - GRAVITY       -> bigger = the cube falls faster
+  - DIFFICULTIES  -> the per-tier speed, length, and obstacle density.
+                     A longer 'length_cells' makes the % climb slower.
 
-The level layout lives in the build_level() function further down --
-each spikes(...) and platform(...) line adds an obstacle.
+The level layout is generated per difficulty in build_level()
+(geometry_dash/level.py).
 
 Enjoy, and ask Claude to add new features whenever you like!

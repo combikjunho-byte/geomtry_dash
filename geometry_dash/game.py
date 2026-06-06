@@ -10,6 +10,7 @@ from .config import (
     BG_TOP,
     DEAD,
     DEATH_PAUSE,
+    DIFFICULTIES,
     EXPLOSION_PARTICLES,
     FPS,
     GROUND_COLOR,
@@ -17,12 +18,12 @@ from .config import (
     GROUND_Y,
     HEIGHT,
     HIT_DIE,
+    MENU,
     PLAY,
     PLAYER_COLOR,
     PLAYER_EDGE,
     PLAYER_X,
     SIZE,
-    SPEED,
     TEXT_COLOR,
     WIDTH,
     WIN,
@@ -49,6 +50,7 @@ class Game:
         pygame.display.set_caption("Geometry Dash - Python Edition")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 24, bold=True)
+        self.mid_font = pygame.font.SysFont("consolas", 34, bold=True)
         self.big_font = pygame.font.SysFont("consolas", 64, bold=True)
 
         # background gradient drawn once onto its own surface (faster)
@@ -56,11 +58,18 @@ class Game:
         vertical_gradient(self.background, BG_TOP, BG_BOTTOM)
 
         self.sounds = SoundBank()
-        self.obstacles, self.finish_x = build_level()
         self.player = Player()
 
+        # The level is built when the player picks a difficulty from the menu.
+        self.obstacles = []
+        self.finish_x = 1.0
+        self.difficulty = 0          # currently selected/played difficulty
+        self.menu_index = 0          # highlighted row in the difficulty menu
+        self.speed = DIFFICULTIES[0]["speed"]
+
         self.running = True
-        self.new_game()
+        self.mode = MENU
+        self.sounds.start_music()    # music plays from the menu to the end
 
     # -- state transitions --------------------------------------------
     def _reset_world(self):
@@ -70,10 +79,17 @@ class Game:
         self.particles = []
         self.timer = 0.0
 
-    def new_game(self):
-        """Start over from attempt 1 (first run, win, or manual restart)."""
+    def start_game(self, difficulty):
+        """Build the chosen difficulty's level and start attempt 1."""
+        self.difficulty = difficulty
+        self.speed = DIFFICULTIES[difficulty]["speed"]
+        self.obstacles, self.finish_x = build_level(difficulty)
         self._reset_world()
         self.attempts = 1
+
+    def go_to_menu(self):
+        """Return to the difficulty-selection screen."""
+        self.mode = MENU
 
     def retry(self):
         """Restart after dying, counting it as the next attempt."""
@@ -125,19 +141,46 @@ class Game:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if self.mode == PLAY:
                     self.jump()
+                elif self.mode == MENU:
+                    self._menu_click(event.pos)
 
     def _on_keydown(self, key):
         if key == pygame.K_ESCAPE:
-            self.running = False
+            # In a level, ESC backs out to the menu; in the menu, it quits.
+            if self.mode == MENU:
+                self.running = False
+            else:
+                self.go_to_menu()
+        elif self.mode == MENU:
+            self._menu_keydown(key)
         elif key in (pygame.K_SPACE, pygame.K_UP):
             if self.mode == PLAY:
                 self.jump()
             elif self.mode == WIN:
-                self.new_game()
+                self.go_to_menu()
         elif key == pygame.K_r:
-            self.new_game()
+            # Restart the current difficulty from attempt 1.
+            self.start_game(self.difficulty)
+
+    def _menu_keydown(self, key):
+        if key in (pygame.K_UP, pygame.K_w):
+            self.menu_index = (self.menu_index - 1) % len(DIFFICULTIES)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            self.menu_index = (self.menu_index + 1) % len(DIFFICULTIES)
+        elif key in (pygame.K_RETURN, pygame.K_SPACE):
+            self.start_game(self.menu_index)
+        elif pygame.K_1 <= key <= pygame.K_5:
+            self.start_game(key - pygame.K_1)
+
+    def _menu_click(self, pos):
+        row = self._menu_row_at(pos)
+        if row is not None:
+            self.menu_index = row
+            self.start_game(row)
 
     def _handle_held_keys(self):
+        if self.mode != PLAY:
+            return
         # holding the jump key keeps hopping (forgiving, like the real game)
         keys = pygame.key.get_pressed()
         if (keys[pygame.K_SPACE] or keys[pygame.K_UP]) and self.player.on_ground:
@@ -151,7 +194,7 @@ class Game:
             self._update_dead(dt)
 
     def _update_play(self, dt):
-        self.camera_x += SPEED * dt
+        self.camera_x += self.speed * dt
         prev_bottom = self.player.apply_physics(dt)
 
         # ground collision
@@ -181,6 +224,9 @@ class Game:
     # -- draw ----------------------------------------------------------
     def _draw(self):
         self.screen.blit(self.background, (0, 0))
+        if self.mode == MENU:
+            self._draw_menu()
+            return
         self._draw_ground()
         self._draw_finish_flag()
         for obstacle in self.obstacles:
@@ -199,6 +245,47 @@ class Game:
         offset = int(cam) % stripe
         for sx in range(-offset, WIDTH, stripe):
             pygame.draw.line(self.screen, (30, 34, 60), (sx, GROUND_Y + 6), (sx, HEIGHT), 2)
+
+    # -- menu ----------------------------------------------------------
+    ROW_W, ROW_H, ROW_GAP = 460, 56, 16
+
+    def _menu_row_rect(self, i):
+        n = len(DIFFICULTIES)
+        block_h = n * self.ROW_H + (n - 1) * self.ROW_GAP
+        top = HEIGHT / 2 - block_h / 2 + 40
+        y = top + i * (self.ROW_H + self.ROW_GAP)
+        return pygame.Rect(int(WIDTH / 2 - self.ROW_W / 2), int(y), self.ROW_W, self.ROW_H)
+
+    def _menu_row_at(self, pos):
+        for i in range(len(DIFFICULTIES)):
+            if self._menu_row_rect(i).collidepoint(pos):
+                return i
+        return None
+
+    def _draw_menu(self):
+        title = self.big_font.render("GEOMETRY DASH", True, (235, 240, 255))
+        self.screen.blit(title, (WIDTH / 2 - title.get_width() / 2, 70))
+        sub = self.font.render("Choose your difficulty", True, (150, 160, 200))
+        self.screen.blit(sub, (WIDTH / 2 - sub.get_width() / 2, 150))
+
+        for i, diff in enumerate(DIFFICULTIES):
+            rect = self._menu_row_rect(i)
+            selected = (i == self.menu_index)
+            color = diff["color"]
+            fill = color if selected else (40, 44, 70)
+            pygame.draw.rect(self.screen, fill, rect, border_radius=10)
+            pygame.draw.rect(self.screen, color, rect, 3, border_radius=10)
+            text_color = (20, 22, 40) if selected else (235, 240, 255)
+            label = self.mid_font.render(f"{i + 1}.  {diff['name']}", True, text_color)
+            self.screen.blit(
+                label,
+                (rect.x + 24, rect.y + rect.height / 2 - label.get_height() / 2),
+            )
+
+        hint = self.font.render(
+            "UP/DOWN to choose    ENTER/click to start    ESC to quit", True, (150, 160, 200)
+        )
+        self.screen.blit(hint, (WIDTH / 2 - hint.get_width() / 2, HEIGHT - 50))
 
     def _draw_finish_flag(self):
         fx = self.finish_x - self.camera_x
@@ -231,12 +318,15 @@ class Game:
         pct = self.font.render(f"{int(progress * 100)}%", True, TEXT_COLOR)
         self.screen.blit(pct, (WIDTH / 2 - pct.get_width() / 2, 44))
 
-        # attempt counter
+        # attempt counter + chosen difficulty
+        diff = DIFFICULTIES[self.difficulty]
         att = self.font.render(f"Attempt {self.attempts}", True, TEXT_COLOR)
         self.screen.blit(att, (20, 20))
+        name = self.font.render(diff["name"], True, diff["color"])
+        self.screen.blit(name, (20, 48))
 
         # hint
-        hint = self.font.render("SPACE / click = jump    R = restart    ESC = quit", True, (150, 160, 200))
+        hint = self.font.render("SPACE / click = jump    R = restart    ESC = menu", True, (150, 160, 200))
         self.screen.blit(hint, (20, HEIGHT - 34))
 
     def _draw_win_screen(self):
@@ -245,7 +335,9 @@ class Game:
         self.screen.blit(overlay, (0, 0))
         msg = self.big_font.render("LEVEL COMPLETE!", True, (90, 255, 150))
         self.screen.blit(msg, (WIDTH / 2 - msg.get_width() / 2, HEIGHT / 2 - 60))
+        diff = DIFFICULTIES[self.difficulty]
         sub = self.font.render(
-            f"Beaten in {self.attempts} attempt(s).  Press SPACE to play again.", True, TEXT_COLOR
+            f"{diff['name']} beaten in {self.attempts} attempt(s).  Press SPACE for the menu.",
+            True, TEXT_COLOR,
         )
         self.screen.blit(sub, (WIDTH / 2 - sub.get_width() / 2, HEIGHT / 2 + 20))
